@@ -22,6 +22,7 @@ function generateShortSession() {
     const r = Math.random().toString(36).substring(2, 6).toUpperCase();
     return `ARSLAN_XMD_${y}_${r}`;
 }
+
 function saveSessionMap(id, mega) {
     let d = {};
     if (fs.existsSync(SESSION_MAP_FILE)) d = JSON.parse(fs.readFileSync(SESSION_MAP_FILE));
@@ -81,11 +82,28 @@ router.get("/", async (req, res) => {
                     saveSessionMap(shortId, megaId);
 
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+
+                    // 1️⃣ First message: only SESSION_ID
                     await sock.sendMessage(jid, {
-                        text: `✅ SESSION GENERATED\n\n🔑 SESSION_ID:\n${shortId}`,
+                        text: `${shortId}`,
                     });
 
-                    await delay(3000); // IMPORTANT
+                    // 2️⃣ Wait 2 seconds before sending bot details
+                    await delay(2000);
+
+                    // 2️⃣ Second message: Bot info with image
+                    await sock.sendMessage(jid, {
+                        image: { url: "https://files.catbox.moe/jftrh0.jpg" },
+                        caption:
+                            `🤖 BOT DETAILS\n\n` +
+                            `• Name: ARSLAN-XMD\n` +
+                            `• Version: 2026\n` +
+                            `• Owner: ArslanMD Official\n` +
+                            `• Use this SESSION_ID in your Arslan-XMD to start the bot.`
+                    });
+
+                    // Cleanup
+                    await delay(1000);
                     rm(dir);
                     process.exit(0);
                 } catch {
@@ -114,6 +132,14 @@ router.get("/", async (req, res) => {
     }
 
     start();
+});
+
+/* ===== SAFETY ===== */
+process.on("uncaughtException", (err) => {
+    const e = String(err);
+    if (e.includes("conflict") || e.includes("not-authorized") || e.includes("Timed Out")) return;
+    console.error("Crash:", err);
+    process.exit(1);
 });
 
 export default router;
