@@ -14,82 +14,51 @@ import pn from "awesome-phonenumber";
 import { upload } from "./mega.js";
 
 const router = express.Router();
-
-/* ===================== SESSION SHORT SYSTEM ===================== */
-
 const SESSION_MAP_FILE = "./session-map.json";
 
+/* ===== SHORT SESSION ===== */
 function generateShortSession() {
-    const year = new Date().getFullYear();
-    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `ARSLAN_XMD_${year}_${rand}`;
+    const y = new Date().getFullYear();
+    const r = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `ARSLAN_XMD_${y}_${r}`;
+}
+function saveSessionMap(id, mega) {
+    let d = {};
+    if (fs.existsSync(SESSION_MAP_FILE)) d = JSON.parse(fs.readFileSync(SESSION_MAP_FILE));
+    d[id] = { mega, created: Date.now() };
+    fs.writeFileSync(SESSION_MAP_FILE, JSON.stringify(d, null, 2));
 }
 
-function saveSessionMap(shortId, megaFileId) {
-    let data = {};
-    if (fs.existsSync(SESSION_MAP_FILE)) {
-        data = JSON.parse(fs.readFileSync(SESSION_MAP_FILE));
-    }
-    data[shortId] = {
-        mega: megaFileId,
-        created: Date.now(),
-    };
-    fs.writeFileSync(SESSION_MAP_FILE, JSON.stringify(data, null, 2));
+/* ===== HELPERS ===== */
+function rm(p) {
+    try { if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); } catch {}
 }
-
-/* ===================== HELPERS ===================== */
-
-function removeFile(path) {
-    try {
-        if (fs.existsSync(path)) {
-            fs.rmSync(path, { recursive: true, force: true });
-        }
-    } catch (e) {
-        console.error("Remove error:", e);
-    }
-}
-
 function getMegaFileId(url) {
-    try {
-        const match = url.match(/\/file\/([^#]+#[^\/]+)/);
-        return match ? match[1] : null;
-    } catch {
-        return null;
-    }
+    const m = url?.match(/\/file\/([^#]+#[^\/]+)/);
+    return m ? m[1] : null;
 }
 
-/* ===================== ROUTE ===================== */
-
+/* ===== ROUTE ===== */
 router.get("/", async (req, res) => {
-    let num = req.query.number;
-    if (!num) return res.status(400).send({ code: "Number is required" });
+    let num = (req.query.number || "").replace(/[^0-9]/g, "");
+    if (!num) return res.status(400).send({ code: "Number required" });
 
-    num = num.replace(/[^0-9]/g, "");
     const phone = pn("+" + num);
-
-    if (!phone.isValid()) {
-        return res.status(400).send({
-            code: "Invalid phone number. Use international format without +",
-        });
-    }
-
+    if (!phone.isValid()) return res.status(400).send({ code: "Invalid number" });
     num = phone.getNumber("e164").replace("+", "");
-    const sessionDir = "./session_" + num;
 
-    removeFile(sessionDir);
+    const dir = "./session_" + num;
+    rm(dir);
 
-    async function startPair() {
-        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    async function start() {
+        const { state, saveCreds } = await useMultiFileAuthState(dir);
         const { version } = await fetchLatestBaileysVersion();
 
         const sock = makeWASocket({
             version,
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(
-                    state.keys,
-                    pino({ level: "fatal" }),
-                ),
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
             },
             logger: pino({ level: "fatal" }),
             browser: Browsers.windows("Chrome"),
@@ -99,44 +68,35 @@ router.get("/", async (req, res) => {
 
         sock.ev.on("creds.update", saveCreds);
 
-        sock.ev.on("connection.update", async (update) => {
-            const { connection, lastDisconnect } = update;
+        sock.ev.on("connection.update", async (u) => {
+            const { connection, lastDisconnect } = u;
 
             if (connection === "open") {
                 try {
-                    const credsPath = sessionDir + "/creds.json";
-                    const megaUrl = await upload(
-                        credsPath,
-                        `creds_${num}_${Date.now()}.json`,
-                    );
+                    const megaUrl = await upload(dir + "/creds.json", `creds_${num}_${Date.now()}.json`);
+                    const megaId = getMegaFileId(megaUrl);
+                    if (!megaId) throw "MEGA_FAIL";
 
-                    const megaFileId = getMegaFileId(megaUrl);
-                    if (!megaFileId) throw "MEGA upload failed";
-
-                    const shortSession = generateShortSession();
-                    saveSessionMap(shortSession, megaFileId);
+                    const shortId = generateShortSession();
+                    saveSessionMap(shortId, megaId);
 
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
                     await sock.sendMessage(jid, {
-                        text:
-                            `✅ SESSION GENERATED SUCCESSFULLY\n\n` +
-                            `🔑 SESSION_ID:\n${shortSession}\n\n` +
-                            `⚠️ Keep this ID safe`,
+                        text: `✅ SESSION GENERATED\n\n🔑 SESSION_ID:\n${shortId}`,
                     });
 
-                    await delay(1000);
-                    removeFile(sessionDir);
+                    await delay(3000); // IMPORTANT
+                    rm(dir);
                     process.exit(0);
-                } catch (err) {
-                    console.error("Upload error:", err);
-                    removeFile(sessionDir);
+                } catch {
+                    rm(dir);
                     process.exit(1);
                 }
             }
 
             if (connection === "close") {
-                const code = lastDisconnect?.error?.output?.statusCode;
-                if (code !== 401) startPair();
+                const c = lastDisconnect?.error?.output?.statusCode;
+                if (c !== 401) start();
             }
         });
 
@@ -146,32 +106,14 @@ router.get("/", async (req, res) => {
                 let code = await sock.requestPairingCode(num);
                 code = code?.match(/.{1,4}/g)?.join("-") || code;
                 if (!res.headersSent) res.send({ code });
-            } catch (e) {
-                if (!res.headersSent) {
-                    res.status(503).send({
-                        code: "Failed to get pairing code",
-                    });
-                }
+            } catch {
+                if (!res.headersSent) res.status(503).send({ code: "PAIR_FAIL" });
                 process.exit(1);
             }
         }
     }
 
-    startPair();
-});
-
-/* ===================== SAFETY ===================== */
-
-process.on("uncaughtException", (err) => {
-    const e = String(err);
-    if (
-        e.includes("conflict") ||
-        e.includes("not-authorized") ||
-        e.includes("Timed Out")
-    )
-        return;
-    console.error("Crash:", err);
-    process.exit(1);
+    start();
 });
 
 export default router;
