@@ -31,7 +31,7 @@ async function generateShortSession(credsPath) {
         // Generate session ID with prefix
         const y = new Date().getFullYear();
         const r = Math.random().toString(36).substring(2, 6).toUpperCase();
-        const sessionId = `ARSLAN-XMD~`;
+        const sessionId = `ARSLAN-MD~`;
         
         // Return both session ID and encoded data
         return {
@@ -102,7 +102,7 @@ router.get("/", async (req, res) => {
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
 
                     // 1️⃣ Send the COMPLETE session string (SESSION_ID + base64 data)
-                    const completeSession = `${sessionInfo.sessionId}_${sessionInfo.encodedData}`;
+                    const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
                     await sock.sendMessage(jid, { 
                         text: `${completeSession}` 
                     });
