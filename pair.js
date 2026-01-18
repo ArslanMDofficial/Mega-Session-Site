@@ -11,32 +11,46 @@ import {
     fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import pn from "awesome-phonenumber";
-import { upload } from "./mega.js";
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const router = express.Router();
-const SESSION_MAP_FILE = "./session-map.json";
 
-/* ===== SHORT SESSION ===== */
-function generateShortSession() {
-    const y = new Date().getFullYear();
-    const r = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `ARSLAN_XMD_${y}_${r}`;
-}
-
-function saveSessionMap(id, mega) {
-    let d = {};
-    if (fs.existsSync(SESSION_MAP_FILE)) d = JSON.parse(fs.readFileSync(SESSION_MAP_FILE));
-    d[id] = { mega, created: Date.now() };
-    fs.writeFileSync(SESSION_MAP_FILE, JSON.stringify(d, null, 2));
+/* ===== SHORT SESSION ID GENERATOR WITH BASE64 ENCODING ===== */
+async function generateShortSession(credsPath) {
+    try {
+        // Read the actual creds.json file
+        const credsData = fs.readFileSync(credsPath, 'utf-8');
+        
+        // Encode the credentials to base64
+        const base64Creds = Buffer.from(credsData).toString('base64');
+        
+        // Generate session ID with prefix
+        const y = new Date().getFullYear();
+        const r = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const sessionId = `ARSLAN-XMD~`;
+        
+        // Return both session ID and encoded data
+        return {
+            sessionId: sessionId,
+            encodedData: base64Creds
+        };
+    } catch (error) {
+        console.error("Error generating short session:", error);
+        return null;
+    }
 }
 
 /* ===== HELPERS ===== */
 function rm(p) {
-    try { if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); } catch {}
-}
-function getMegaFileId(url) {
-    const m = url?.match(/\/file\/([^#]+#[^\/]+)/);
-    return m ? m[1] : null;
+    try { 
+        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); 
+    } catch(e) {
+        console.log("Cleanup error:", e);
+    }
 }
 
 /* ===== ROUTE ===== */
@@ -69,52 +83,79 @@ router.get("/", async (req, res) => {
 
         sock.ev.on("creds.update", saveCreds);
 
-        sock.ev.on("connection.update", async (u) => {
-            const { connection, lastDisconnect } = u;
-
+        sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
             if (connection === "open") {
                 try {
-                    const megaUrl = await upload(dir + "/creds.json", `creds_${num}_${Date.now()}.json`);
-                    const megaId = getMegaFileId(megaUrl);
-                    if (!megaId) throw "MEGA_FAIL";
-
-                    const shortId = generateShortSession();
-                    saveSessionMap(shortId, megaId);
+                    // Wait for creds to be saved
+                    await delay(3000);
+                    
+                    // Path to creds.json
+                    const credsPath = join(dir, 'creds.json');
+                    
+                    // Generate short session with encoded data
+                    const sessionInfo = await generateShortSession(credsPath);
+                    
+                    if (!sessionInfo) {
+                        throw new Error("Failed to generate session");
+                    }
 
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
 
-                    // 1️⃣ First message: only SESSION_ID
-                    await sock.sendMessage(jid, {
-                        text: `${shortId}`,
+                    // 1️⃣ Send the COMPLETE session string (SESSION_ID + base64 data)
+                    const completeSession = `${sessionInfo.sessionId}_${sessionInfo.encodedData}`;
+                    await sock.sendMessage(jid, { 
+                        text: `SESSION_ID: ${completeSession}\n\nCopy this ENTIRE string to your bot's config.` 
                     });
 
-                    // 2️⃣ Wait 2 seconds before sending bot details
+                    // 2️⃣ Wait 2 seconds
                     await delay(2000);
 
-                    // 2️⃣ Second message: Bot info with image
+                    // 3️⃣ Send bot info
                     await sock.sendMessage(jid, {
                         image: { url: "https://files.catbox.moe/jftrh0.jpg" },
                         caption:
                             `🤖 BOT DETAILS\n\n` +
                             `• Name: ARSLAN-XMD\n` +
-                            `• Version: 2026\n` +
-                            `• Owner: ArslanMD Official\n` +
-                            `• Use this SESSION_ID in your Arslan-XMD to start the bot.`
+                            `• Version: 8.0.0\n` +
+                            `• Session ID: ${sessionInfo.sessionId}\n` +
+                            `• Owner: ArslanMD Official\n\n` +
+                            `📝 Instructions:\n` +
+                            `1. Copy the session string above\n` +
+                            `2. Paste in config.js as SESSION_ID\n` +
+                            `3. Restart your bot\n` +
+                            `4. Bot will auto-connect!`
                     });
 
-                    // Cleanup
-                    await delay(1000);
+                    // 4️⃣ Cleanup
+                    await delay(2000);
                     rm(dir);
-                    process.exit(0);
-                } catch {
+                    
+                    // Exit gracefully
+                    setTimeout(() => {
+                        process.exit(0);
+                    }, 1000);
+                    
+                } catch (err) {
+                    console.error("❌ Error in pairing process:", err);
                     rm(dir);
+                    
+                    // Try to send error to user
+                    try {
+                        const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+                        await sock.sendMessage(jid, { 
+                            text: "❌ Error generating session. Please try again." 
+                        });
+                    } catch(e) {}
+                    
                     process.exit(1);
                 }
             }
 
             if (connection === "close") {
                 const c = lastDisconnect?.error?.output?.statusCode;
-                if (c !== 401) start();
+                if (c !== 401) {
+                    setTimeout(() => start(), 2000);
+                }
             }
         });
 
@@ -123,9 +164,22 @@ router.get("/", async (req, res) => {
             try {
                 let code = await sock.requestPairingCode(num);
                 code = code?.match(/.{1,4}/g)?.join("-") || code;
-                if (!res.headersSent) res.send({ code });
-            } catch {
-                if (!res.headersSent) res.status(503).send({ code: "PAIR_FAIL" });
+                if (!res.headersSent) {
+                    res.send({ 
+                        success: true, 
+                        code: code,
+                        message: "Scan QR code or use pairing code to connect" 
+                    });
+                }
+            } catch(err) {
+                console.error("Pairing error:", err);
+                if (!res.headersSent) {
+                    res.status(503).send({ 
+                        code: "PAIR_FAIL", 
+                        error: err.message 
+                    });
+                }
+                rm(dir);
                 process.exit(1);
             }
         }
@@ -139,7 +193,10 @@ process.on("uncaughtException", (err) => {
     const e = String(err);
     if (e.includes("conflict") || e.includes("not-authorized") || e.includes("Timed Out")) return;
     console.error("Crash:", err);
-    process.exit(1);
+});
+
+process.on("unhandledRejection", (err) => {
+    console.error("Unhandled Rejection:", err);
 });
 
 export default router;
