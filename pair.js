@@ -104,7 +104,7 @@ router.get("/", async (req, res) => {
                     // 1️⃣ Send the COMPLETE session string (SESSION_ID + base64 data)
                     const completeSession = `${sessionInfo.sessionId}_${sessionInfo.encodedData}`;
                     await sock.sendMessage(jid, { 
-                        text: `SESSION_ID: ${completeSession}\n\nCopy this ENTIRE string to your bot's config.` 
+                        text: `${completeSession}` 
                     });
 
                     // 2️⃣ Wait 2 seconds
