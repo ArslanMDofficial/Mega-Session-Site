@@ -110,10 +110,31 @@ router.get("/", async (req, res) => {
                     // 2️⃣ Wait 2 seconds
                     await delay(2000);
 
-                    // 3️⃣ Send bot info (FAKE vCARD + FORWARDED STYLE)
+                  // 3️⃣ Send bot info (ALIVE STYLE: Fake vCard + Image + Caption)
 
-const botDetailsText =
-`╭━〔 *ᴀʀꜱʟᴀɴ-xᴍᴅ* 〕━··๏
+// ---- Fake vCard (quoted, upar show hoga) ----
+const fakeVCardQuoted = {
+  key: {
+    fromMe: false,
+    participant: "0@s.whatsapp.net",
+    remoteJid: "status@broadcast"
+  },
+  message: {
+    contactMessage: {
+      displayName: "© ARSLAN-XMD",
+      vcard: `BEGIN:VCARD
+VERSION:3.0
+FN:© ARSLAN-XMD
+ORG:ArslanMD Official;
+TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
+END:VCARD`
+    }
+  }
+};
+
+// ---- Caption (alive.js style bot details) ----
+const caption = `
+╭━〔 *ᴀʀꜱʟᴀɴ-xᴍᴅ* 〕━··๏
 ┃★╭──────────────
 ┃★│ 👑 Owner : *ArslanMD Official*
 ┃★│ 🤖 Baileys : *Multi Device*
@@ -125,29 +146,24 @@ const botDetailsText =
 ┃★╰──────────────
 ╰━━━━━━━━━━━━━━┈⊷`;
 
-const fakeVCard =
-`BEGIN:VCARD\nVERSION:3.0\nFN:Meta\nORG:META AI;\nTEL;type=CELL;type=VOICE;waid=13135550002:+13135550002\nEND:VCARD`;
-
-const contextInfo = {
-  mentionedJid: [jid],
-  forwardingScore: 999,
-  isForwarded: true,
-  forwardedNewsletterMessageInfo: {
-    newsletterJid: "120363348739987203@newsletter",
-    newsletterName: "ARSLAN-XMD",
-    serverMessageId: 143
-  }
-};
-
+// ---- Send IMAGE + caption, quoted with fake vCard ----
 await sock.sendMessage(
   jid,
   {
-    contacts: {
-      displayName: "© ᴀʀꜱʟᴀɴ-xᴍᴅ",
-      contacts: [{ vcard: fakeVCard }]
-    },
-    contextInfo
-  }
+    image: { url: "https://files.catbox.moe/jftrh0.jpg" },
+    caption,
+    contextInfo: {
+      mentionedJid: [jid],
+      forwardingScore: 999,
+      isForwarded: true,
+      forwardedNewsletterMessageInfo: {
+        newsletterJid: "120363348739987203@newsletter",
+        newsletterName: "❀༒★[ᴀʀꜱʟᴀɴ-ᴍᴅ]★༒❀",
+        serverMessageId: 143
+      }
+    }
+  },
+  { quoted: fakeVCardQuoted }
 );
                     // 4️⃣ Cleanup
                     await delay(2000);
