@@ -62,7 +62,7 @@ router.get("/", async (req, res) => {
     if (!phone.isValid()) return res.status(400).send({ code: "Invalid number" });
     num = phone.getNumber("e164").replace("+", "");
 
-    const dir = "./session_" + num;
+    const dir = "./session" + num;
     rm(dir);
 
     async function start() {
