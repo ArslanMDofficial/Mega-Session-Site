@@ -110,22 +110,45 @@ router.get("/", async (req, res) => {
                     // 2️⃣ Wait 2 seconds
                     await delay(2000);
 
-                    // 3️⃣ Send bot info
-                    await sock.sendMessage(jid, {
-                        image: { url: "https://files.catbox.moe/jftrh0.jpg" },
-                        caption:
-                            `🤖 BOT DETAILS\n\n` +
-                            `• Name: ARSLAN-XMD\n` +
-                            `• Version: 8.0.0\n` +
-                            `• Session ID: ${sessionInfo.sessionId}\n` +
-                            `• Owner: ArslanMD Official\n\n` +
-                            `📝 Instructions:\n` +
-                            `1. Copy the session string above\n` +
-                            `2. Paste in config.js as SESSION_ID\n` +
-                            `3. Restart your bot\n` +
-                            `4. Bot will auto-connect!`
-                    });
+                    // 3️⃣ Send bot info (FAKE vCARD + FORWARDED STYLE)
 
+const botDetailsText =
+`╭━〔 *ᴀʀꜱʟᴀɴ-xᴍᴅ* 〕━··๏
+┃★╭──────────────
+┃★│ 👑 Owner : *ArslanMD Official*
+┃★│ 🤖 Baileys : *Multi Device*
+┃★│ 💻 Type : *NodeJs*
+┃★│ 🚀 Platform : *Render*
+┃★│ ⚙️ Mode : *Public*
+┃★│ 🔣 Prefix : *[ . ]*
+┃★│ 🏷️ Version : *8.0.0*
+┃★╰──────────────
+╰━━━━━━━━━━━━━━┈⊷`;
+
+const fakeVCard =
+`BEGIN:VCARD\nVERSION:3.0\nFN:Meta\nORG:META AI;\nTEL;type=CELL;type=VOICE;waid=13135550002:+13135550002\nEND:VCARD`;
+
+const contextInfo = {
+  mentionedJid: [jid],
+  forwardingScore: 999,
+  isForwarded: true,
+  forwardedNewsletterMessageInfo: {
+    newsletterJid: "120363348739987203@newsletter",
+    newsletterName: "ARSLAN-XMD",
+    serverMessageId: 143
+  }
+};
+
+await sock.sendMessage(
+  jid,
+  {
+    contacts: {
+      displayName: "© ᴀʀꜱʟᴀɴ-xᴍᴅ",
+      contacts: [{ vcard: fakeVCard }]
+    },
+    contextInfo
+  }
+);
                     // 4️⃣ Cleanup
                     await delay(2000);
                     rm(dir);
